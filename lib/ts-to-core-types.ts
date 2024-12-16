@@ -1,4 +1,4 @@
-import ts from 'typescript'
+import ts, {InterfaceDeclaration, TypeNode} from 'typescript'
 import {
 	type AnyType,
 	type ConversionResult,
@@ -37,8 +37,11 @@ interface Context
 {
 	options: Required< FromTsOptions >;
 	typeMap: Map< string, TopLevelEntry >;
+	typeArgumentStack: Map<string, TypeNode>[];
+	genericTypes: Map<string, NodeType>;
 	includeExtra: Set< string >;
 	cyclicState: Set< string >;
+	sourceCode: string;
 	getUnsupportedError( message: string, node: ts.Node ): UnsupportedError;
 	handleError( err: UnsupportedError ): undefined | never;
 	ensureNonCyclic( name: string, node: ts.Node ): void;
@@ -237,6 +240,9 @@ export function convertTypeScriptToCoreTypes(
 				]
 			)
 		),
+		genericTypes: new Map(),
+		typeArgumentStack: [],
+		sourceCode: sourceCode,
 		includeExtra: new Set( ),
 		cyclicState: new Set( ),
 		getUnsupportedError( message, node )
@@ -310,6 +316,13 @@ export function convertTypeScriptToCoreTypes(
 		)
 		.map( statement => convertTopLevel( statement ) as NamedType )
 		.filter( < T >( v: T ): v is NonNullable< T > => !!v );
+
+	ctx.genericTypes.forEach((gt, fullName) => {
+		types.push({
+			...gt,
+			name: fullName,
+		})
+	})
 
 	types.push(
 		...[ ...ctx.includeExtra.values( ) ]
@@ -570,6 +583,10 @@ function fromTsTypeNode(
 
 		const ref = node.typeName.text;
 
+		if (ctx.typeArgumentStack.length > 0 && ctx.typeArgumentStack[ctx.typeArgumentStack.length - 1].has(ref)) {
+			return fromTsTypeNode(ctx.typeArgumentStack[ctx.typeArgumentStack.length - 1].get(ref)!, ctx, options)
+		}
+
 		// TODO: Make this able to go into named type.
 		// It currently understands:
 		// 'foo' | 'bar'
@@ -747,9 +764,31 @@ function fromTsTypeNode(
 			};
 		}
 
-		if ( isGenericType( node ) )
-			return handleGeneric( node, ctx );
-		// TODO: Handle (reconstruct) generics
+		if ( isGenericType( node ) ) {
+			let typeArgs = ( node as ts.TypeReferenceNode ).typeArguments!
+			let genericType = ctx.typeMap.get(node.typeName.text)!.declaration as ts.InterfaceDeclaration;
+			let params: [string, TypeNode][] = (genericType as InterfaceDeclaration)
+				.typeParameters!
+				.map((parameterDeclaration) => [parameterDeclaration.name.text, parameterDeclaration.default!])
+			for (let i = 0; i < typeArgs.length; i++) {
+				params[i][1] = typeArgs[i];
+			}
+			ctx.typeArgumentStack.push(new Map(params));
+			genericType.members
+			let typePostfix = ctx.sourceCode.substring(typeArgs.pos, typeArgs.end);
+			let ref = node.typeName.text + "_" + typePostfix;
+			ctx.genericTypes.set(ref, {
+				...fromTsObjectMembers(genericType, ctx),
+				type: 'object',
+			});
+			ctx.typeArgumentStack.pop()
+
+			return {
+				type: 'ref',
+				ref,
+				...decorateNode(node)
+			}
+		}
 
 		if ( peekOnly )
 			return { type: 'ref', ref, ...decorateNode( node ) };

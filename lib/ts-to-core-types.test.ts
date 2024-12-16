@@ -48,6 +48,101 @@ it( "object literal type", ( ) =>
 	] );
 } );
 
+it( "object generic", ( ) =>
+{
+	const coreTypes = convertTypeScriptToCoreTypes( `
+	export interface Generic<R> {
+		foo: string;
+		bar: R;
+	}
+	
+	export interface UseGenericWithString{
+		gen: Generic<string>
+	}
+	
+	export interface UseGenericWithNumber{
+		gen: Generic<number>
+	}
+	` ).data.types;
+
+	equal( coreTypes, [
+		{
+			"additionalProperties": false,
+			"name": "UseGenericWithString",
+			"properties": {
+				"gen": {
+					"node": {
+						"ref": "Generic_string",
+						"title": "UseGenericWithString.gen",
+						"type": "ref"
+					},
+					"required": true
+				}
+			},
+			"title": "UseGenericWithString",
+			"type": "object"
+		},
+		{
+			"additionalProperties": false,
+			"name": "UseGenericWithNumber",
+			"properties": {
+				"gen": {
+					"node": {
+						"ref": "Generic_number",
+						"title": "UseGenericWithNumber.gen",
+						"type": "ref"
+					},
+					"required": true
+				}
+			},
+			"title": "UseGenericWithNumber",
+			"type": "object"
+		},
+		{
+			"additionalProperties": false,
+			"name": "Generic_string",
+			"properties": {
+				"bar": {
+					"node": {
+						"title": "Generic.bar",
+						"type": "string"
+					},
+					"required": true
+				},
+				"foo": {
+					"node": {
+						"title": "Generic.foo",
+						"type": "string"
+					},
+					"required": true
+				}
+			},
+			"type": "object"
+		},
+		{
+			"additionalProperties": false,
+			"name": "Generic_number",
+			"properties": {
+				"bar": {
+					"node": {
+						"title": "Generic.bar",
+						"type": "number"
+					},
+					"required": true
+				},
+				"foo": {
+					"node": {
+						"title": "Generic.foo",
+						"type": "string"
+					},
+					"required": true
+				}
+			},
+			"type": "object"
+		}
+	] );
+} );
+
 it( "negative numeric literal type", ( ) =>
 {
 	const coreTypes = convertTypeScriptToCoreTypes( `
